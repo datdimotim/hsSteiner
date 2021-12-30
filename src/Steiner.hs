@@ -133,8 +133,23 @@ genExtVertex s1 s2 m k =
     if t > 1 || t < 0
     then Nothing
     else Just $ Vertex extId ex ey
-     
-    
+
+getBackVertexPair :: Net -> Vertex -> Vertex -> Vertex -> Maybe Net
+getBackVertexPair sln m s1 s2 = do   
+  let (e:empt) = getVertEdges m sln
+  guard $ null empt
+  let k = if e ^. from . idx == m ^. idx then e ^. to else e ^. from
+  ext <- genExtVertex s1 s2 m k 
+  let a1 = Edge ext s1
+  let a2 = Edge ext s2
+  let c = Edge ext k
+  guard $ cosEdgesAngle a1 a2 < 0 && cosEdgesAngle a1 c < 0
+  let e1 = Edge s1 ext
+  let e2 = Edge s2 ext
+  let es' = map (replaceVertex m ext) (sln ^. es)
+  return $ Net (ext : _vs sln)  (e1 : e2 : es')
+       
+
 steiner :: [Vertex] -> [Net]
 steiner [_] = [Net [] []]
 steiner [a, b] = [Net [] [Edge a b]]
@@ -148,25 +163,9 @@ steiner ps = fstVars ++ sndVars where
   
   sndVars = do
     ((s1, s2), vs) <- select2 ps
-    let nets = do 
-                  m <- genTriangles s1 s2
-                  sln <- steiner (m : vs)
-                  let (e:empt) = getVertEdges m sln
-                  guard $ null empt
-                  let k = if e ^. from . idx == m ^. idx then e ^. to else e ^. from
-                  ext <- toList $ genExtVertex s1 s2 m k 
-                  let a1 = Edge ext s1
-                  let a2 = Edge ext s2
-                  let c = Edge ext k
-                  guard $ cosEdgesAngle a1 a2 < 0 && cosEdgesAngle a1 c < 0
-                  let e1 = Edge s1 ext
-                  let e2 = Edge s2 ext
-                  let es' = map (replaceVertex m ext) (sln ^. es)
-                  return $ Net (ext : _vs sln)  (e1 : e2 : es')
-                  
-    guard $ not (null nets)
-    return $ minimumBy (comparing evalWeight) nets
-      
+    m <- genTriangles s1 s2
+    let subNet = minimumBy (comparing evalWeight) $ steiner (m : vs)
+    toList $ getBackVertexPair subNet m s1 s2
 -----------
 
 {-
@@ -190,8 +189,8 @@ testData =
     Vertex "C" 501.0243902439024 501.020325203252,
     Vertex "D" 756.1626016260163 363.6382113821138,
     Vertex "E" 863.5284552845529 793.1016260162602,
-    Vertex "F" 243.5772357723577 133.89837398373976
-    --Vertex "G" 203.5772357723577 233.89837398373976,
+    Vertex "F" 243.5772357723577 133.89837398373976,
+    Vertex "G" 203.5772357723577 233.89837398373976
     --Vertex "H" 253.5772357723577 33.89837398373976
   ]  
 
