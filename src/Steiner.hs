@@ -19,7 +19,7 @@ select2 [a, b] = [((a, b), [])]
 select2 (a:as) = over (mapped . _1) (a,) (select1 as) ++ over (mapped . _2) (a:) (select2 as)
 
 
-data Vertex = Vertex {_idx :: String, _x :: Double, _y :: Double}
+data Vertex = Vertex {_idx :: String, _x :: Double, _y :: Double, _isFictive :: Bool}
 makeLenses ''Vertex
 
 
@@ -32,15 +32,15 @@ makeLenses ''Net
 
 
 getVertEdges :: Vertex -> Net -> [Edge]
-getVertEdges (Vertex idx _ _) (Net _ edges) =
+getVertEdges (Vertex idx _ _ _) (Net _ edges) =
   let
-    predicate (Edge (Vertex fIdx _ _) (Vertex tIdx _ _)) = fIdx == idx || tIdx == idx
+    predicate (Edge (Vertex fIdx _ _ _) (Vertex tIdx _ _ _)) = fIdx == idx || tIdx == idx
   in
     filter predicate edges
 
 
 toVec :: Edge -> (Double, Double)
-toVec (Edge (Vertex _ afx afy) (Vertex _ atx aty)) = (atx - afx, aty - afy)
+toVec (Edge (Vertex _ afx afy _) (Vertex _ atx aty _)) = (atx - afx, aty - afy)
 
 
 cosEdgesAngle :: Edge -> Edge -> Double
@@ -65,7 +65,7 @@ isAddable cur v net =
     es = getVertEdges v net
     curEdge = Edge v cur
   in
-    length es <= 2 && all ((< (-0.5 + 0.001)) . cosEdgesAngle curEdge . (`normEdgeDir` v)) es
+    (not $ v ^. isFictive) && length es <= 2 && all ((< (-0.5 + 0.001)) . cosEdgesAngle curEdge . (`normEdgeDir` v)) es
 
 
 distSquare :: Vertex -> Vertex -> Double
@@ -94,8 +94,8 @@ genTriangles a b = [m1, m2] where
   x2 = a ^. x + cos60 * dx + sin60 * dy
   y1 = a ^. y + sin60 * dx + cos60 * dy
   y2 = a ^. y - sin60 * dx + cos60 * dy
-  m1 = Vertex (a ^. idx ++ "-" ++ b ^. idx ++ "-1") x1 y1
-  m2 = Vertex (a ^. idx ++ "-" ++ b ^. idx ++ "-2") x2 y2
+  m1 = Vertex (a ^. idx ++ "-" ++ b ^. idx ++ "-1") x1 y1 True
+  m2 = Vertex (a ^. idx ++ "-" ++ b ^. idx ++ "-2") x2 y2 True
   
   
 replaceVertex :: Vertex -> Vertex -> Edge -> Edge
@@ -132,7 +132,7 @@ genExtVertex s1 s2 m k =
   in
     if t > 1 || t < 0
     then Nothing
-    else Just $ Vertex extId ex ey
+    else Just $ Vertex extId ex ey True
 
 getBackVertexPair :: Net -> Vertex -> Vertex -> Vertex -> Maybe Net
 getBackVertexPair sln m s1 s2 = do   
@@ -157,14 +157,18 @@ steiner ps = fstVars ++ sndVars where
   fstVars = do
     (cur, vs) <- select1 ps
     let closest = minimumBy (comparing $ distSquare cur) vs
-    let optNet = minimumBy (comparing evalWeight) (steiner vs)
+    let subNets = steiner vs
+    guard . not . null $ subNets
+    let optNet = minimumBy (comparing evalWeight) subNets
     guard $ isAddable cur closest optNet
     return $ Net (_vs optNet) (Edge cur closest : _es optNet)
   
   sndVars = do
     ((s1, s2), vs) <- select2 ps
     m <- genTriangles s1 s2
-    let subNet = minimumBy (comparing evalWeight) $ steiner (m : vs)
+    let subNets = steiner (m : vs)
+    guard . not . null $ subNets
+    let subNet = minimumBy (comparing evalWeight) subNets
     toList $ getBackVertexPair subNet m s1 s2
 -----------
 
@@ -184,13 +188,13 @@ const testData = [
 testData :: [Vertex]
 testData = 
   [
-    Vertex "A" 69.2520325203252 236.64634146341456,
-    Vertex "B" 48.47154471544715 651.1016260162601,
-    Vertex "C" 501.0243902439024 501.020325203252,
-    Vertex "D" 756.1626016260163 363.6382113821138,
-    Vertex "E" 863.5284552845529 793.1016260162602,
-    Vertex "F" 243.5772357723577 133.89837398373976,
-    Vertex "G" 203.5772357723577 233.89837398373976
+    Vertex "A" 69.2520325203252 236.64634146341456 False,
+    Vertex "B" 48.47154471544715 651.1016260162601 False,
+    Vertex "C" 501.0243902439024 501.020325203252 False,
+    Vertex "D" 756.1626016260163 363.6382113821138 False,
+    Vertex "E" 863.5284552845529 793.1016260162602 False,
+    Vertex "F" 243.5772357723577 133.89837398373976 False,
+    Vertex "G" 203.5772357723577 233.89837398373976 False
     --Vertex "H" 253.5772357723577 33.89837398373976
   ]  
 
